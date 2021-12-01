@@ -4,43 +4,36 @@ library(tidyverse)
 library(ggplot2)
 library(magrittr)
 library(corrgram)
-library(ggpubr)
 
-#Data load and clean up 
-pub_data <- read.csv("pub.csv")
-
-pub_data[,2] <- as.factor(pub_data[,2])
-pub_data[,3] <- as.factor(pub_data[,3])
-colnames(pub_data) <- c("Articles","Female","Marital_Status","No_of_kids","Prestige_Score","Mentor_publications")
+#Data load and summary 
+pub_data <- as.data.frame(readr::read_csv("pub.csv",
+                            skip =1,
+                            col_names = c("Articles","Gender","Marital_Status",
+                                          "No_of_kids","Prestige_Score","Mentor_publications"),
+                            col_types = "iffidi"))
+levels(pub_data$Gender) <- c("Male","Female")
+levels(pub_data$Marital_Status) <- c("Married","Unmarried")
+pub_data$Marital_Status <- fct_relevel(pub_data$Marital_Status, c("Unmarried","Married"))
 str(pub_data)
-attach(pub_data)
 
-
-#Numerical Summary
-pub_data_summary <- pub_data 
-pub_data_summary[,4] <- as.factor(pub_data_summary[,4])
-summary(pub_data_summary)
-
+pub_data %>% mutate_at("No_of_kids",as.factor)%>%summary
 
 #Overdispersion summary
-Article_summary <- data.frame(Mean = mean(pub_data_summary[,1]) ,
-                                    Variance = var(pub_data_summary[,1]),
-                                    Ratio = Article_count_summary[,2]/Article_count_summary[,1] )
+c(Mean = mean(pub_data[,1]) ,
+          Variance = var(pub_data[,1]),
+          Ratio = var(pub_data[,1])/mean(pub_data[,1]) )
 
-Article_summary
 
-#Correlation Statistics
+#Correlation Statistic
 pub_data %>% 
   mutate_if(is.factor, as.numeric) %>% 
-  cor %>%
+  cor %>% 
   corrgram(order=NULL, 
            lower.panel=panel.shade, 
-           upper.panel=NULL, 
-           label.pos = c(0.5, 0.15),
+           upper.panel= panel.cor,
+           cex.cor = 3,
            text.panel=panel.txt, 
-           labels = c("Articles","Gender","Marital_Status","Number_of_kids","Prestige","Mentor_Publications"),
-           col.regions = colorRampPalette(c("#FFFFFF","#eff3ff","#c6dbef","#3182bd","#08519c"))
-  )
+           col.regions = colorRampPalette(c("#08519c","#3182bd","#eff3ff","#3182bd","#08519c")))
 
 #Logic for removing marital status
 pub_data %>%
@@ -56,20 +49,20 @@ pub_data %>%
   theme(plot.title = element_text(hjust = 0.5))
 
 #Articles vs poisson distribution
-x <- seq(min(Articles), max(Articles), by = 1)
-barplot(table(Articles), beside = TRUE, ylim = c(0, 0.35*nrow(pub_data)), col = "#eff3ff" )
-lines(x+0.5,dpois(x,lambda=mean(Articles))*nrow(pub_data), col="#08519c",lwd = 2)
+x <- seq(min(pub_data$Articles), max(pub_data$Articles), by = 1)
+barplot(table(pub_data$Articles), beside = TRUE, ylim = c(0, 0.35*nrow(pub_data)), col = "#eff3ff" )
+lines(x+0.5,dpois(x,lambda=mean(pub_data$Articles))*nrow(pub_data), col="#08519c",lwd = 2)
 title(xlab="Number of articles", ylab="Frequency")
 #why is this not 'beside' ? how to do this in ggplot?
 
+
 #Model1
-pub.glm <- glm(articles ~ .,data = pub_data, family = poisson)
+pub.glm <- glm(pub_data$Articles ~ .,data = pub_data, family = poisson)
 summary(pub.glm)
-)
 
 #Archive
   
-  ggplot(pub_data,aes (x= Mentor_publications, y = Articles))+
+  ggplot(pub_data,aes (x= Prestige_Score, y = Articles, col = No_of_kids))+
     geom_point(position = position_jitter(width = 1))+
     theme(legend.position = "top",
           legend.direction = "horizontal",
@@ -95,3 +88,5 @@ summary(pub.glm)
             boxplot_fn(swim_data,3,"married") ,
             boxplot_fn(swim_data,4,"kids")
   )
+  
+detach(pub_data)
