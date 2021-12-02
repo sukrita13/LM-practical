@@ -6,6 +6,7 @@ library(corrgram)
 library(ggpubr)
 library(gridExtra)
 library(forcats)
+library(rsq)
 
 #Data load and summary 
 pub_data <- as.data.frame(readr::read_csv("pub.csv",
@@ -62,7 +63,7 @@ lines(x+0.5,dpois(x,lambda=mean(pub_data$Articles))*nrow(pub_data), col="#08519c
 title(xlab="Number of articles", ylab="Frequency")
 #why is this not 'beside' ? how to do this in ggplot?
 
-#Visualization for categorical data
+#EDA Plots
 
 plots_for_EDA <- function() { 
 plot_by_category <- function(x_data,x, cat)  {
@@ -115,39 +116,68 @@ grid.arrange(
   
 plots_for_EDA()
 
-#Visualization for numerical data
-
-
-
-#Model1
-pub.glm <- glm(pub_data$Articles ~ .,data = pub_data, family = poisson)
+#Model1 - Natural Poisson
+pub.glm <- glm(Articles ~ .,data = pub_data, family = poisson)
 summary(pub.glm)
+par(mfrow = c(3,2))
+plot(pub.glm, which = c(1:6))
+rsq.kl(pub.glm)
 
-#Archive
+#Null and Saturated likelihood
+y <-pub_data$Articles[pub_data$Articles != 0]
+lnull <- sum(pub_data$Articles * log(mean(pub_data$Articles)) - mean(pub_data$Articles) - log(factorial(pub_data$Articles)))
+lf <- sum(y * log(y) - y - log(factorial(y)))
+2*(lf - lnull) 
 
-  
-  
-  boxplot_fn <- function(x_data, x, xlab) 
-  {
-    col <- c("#eff3ff","#c6dbef","#9ecae1","#3182bd","#08519c")
-    ggplot(pub_data, aes(x = as.factor(pub_data[,x]), y = (Articles))) +
-      geom_boxplot(show.legend = FALSE, fill = col[x]) + 
-      labs(y = "Articles published", x = xlab) +
-      scale_x_discrete()+
-      theme(
-        axis.title.x = element_text(size = 7.5),
-        axis.title.y = element_text(size = 7.5)
-      )
-  }
-  
-  ggarrange(boxplot_fn(pub_data,2,"female"),
-            boxplot_fn(swim_data,3,"married") ,
-            boxplot_fn(swim_data,4,"kids")
-  )
-  
-  
-  
-detach(pub_data)
+#Deviance check - don't use for poisson 
+1 - pchisq(deviance(pub.glm), 915 - 6)
+
+#Model 2 - Remove non-significant terms
+pub.glm_reduced <- glm(Articles ~ Mentor_publications + Gender +  No_of_kids,
+                      data = pub_data,
+                      family = poisson)
+summary(pub.glm_reduced)
+rsq.kl(pub.glm_reduced)
+
+#Deviance check - 2 vs 1
+dev1 <- deviance(pub.glm)
+dev2 <- deviance(pub.glm_reduced)
+1 - pchisq(dev2 - dev1,2)
+#small p value so rej Ho
+
+#Model 3 - Check for interactions
+pub.glm_interactions <- glm(Articles ~ Gender*Mentor_publications + Gender*No_of_kids,
+                       data = pub_data,
+                       family = poisson)
+summary(pub.glm_interactions)
+
+
+#Standardized deviance residuals vs fitted values 
+summary(rstandard(pub.glm_reduced))
+var(rstandard(pub.glm_reduced))
+plot(predict(pub.glm_reduced,
+             type="response"),
+     rstandard(pub.glm_reduced),
+     xlab=expression(hat(mu)), ylab="Deviance Residuals",
+     pch=19, col = "#08519c")
+
+
+#Dispersion correction
+phi_estimate <- sum(residuals(pub.glm_reduced, type="pearson")^2)/(915-4)
+pub.glm_dispersed <- glm(pub_data$Articles ~ Mentor_publications + Gender +  No_of_kids,data = pub_data, family = quasipoisson)
+summary(pub.glm_dispersed)
+names(pub.glm_dispersed)
+rsq.kl(pub.glm_dispersed)
+1-pub.glm_dispersed$deviance/pub.glm_dispersed$null.deviance
+
+
+#Zero count correction - Hurdle mixture model
+pub.glm_zeroinf <- hurdle(Articles ~ ., data = pub_data)
+summary(pub.glm_zeroinf)
+deviance(pub.glm_zeroinf)
+1-pub.glm_zeroinf$deviance/pub.glm_zeroinf$null.deviance
+
+
 
   
 
