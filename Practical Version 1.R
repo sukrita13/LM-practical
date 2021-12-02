@@ -63,34 +63,57 @@ title(xlab="Number of articles", ylab="Frequency")
 #why is this not 'beside' ? how to do this in ggplot?
 
 #Visualization for categorical data
+
+plots_for_EDA <- function() { 
 plot_by_category <- function(x_data,x, cat)  {
   x_data %>%
-    ggplot( aes(x=x_data[,x], color=x_data[,cat],alpha=.25, fill=x_data[,cat])) +
+    ggplot( aes(x=x_data[,x],alpha=.25, fill=x_data[,cat])) +
     geom_histogram(aes(y=..density..), binwidth = 1, 
                    position="identity")+
-    geom_density(alpha=.1) +
-    theme(
-      legend.position="none",
-      panel.spacing = unit(0.1, "lines"),
-      strip.text.x = element_text(size = 8)
-    ) +
-    #scale_color_brewer("Blues")+
-    #scale_fill_brewer("Blues")+
-    xlab(paste("By",colnames(x_data)[cat])) +
-    ylab("")+
+    geom_density(alpha=.1, color="#08519c") +
+    theme_bw()+
+    theme(legend.position="none",
+          panel.spacing = unit(0.1, "lines"),
+          strip.text.x = element_text(size = 8)
+          )+
+    scale_color_brewer("Blues")+
+    scale_fill_brewer("Blues")+
+    labs(title = paste("By",colnames(x_data)[cat]), 
+         x = "Number of articles published", 
+         y = "Frequency") +
     facet_wrap(~x_data[,cat])
 }
 
+g1 <- pub_data_factored %>% 
+      group_by(Mentor_publications) %>% 
+      summarise(Mean = mean(Articles), No_of_students  = length(Articles)) %>% 
+      ggplot(aes (x= Mentor_publications, y = Mean, size = No_of_students))+
+      geom_point(alpha = 0.5, col = "#08519c")+
+      ylim(0,5)+
+      theme_bw()+
+      theme(legend.position = "none",
+            panel.background = element_blank())+
+      scale_size(range = c(0.1, 15))+
+      labs(title = "By number of mentor publications", 
+           x = "Number of publications by mentor", 
+           y = "Mean number of publications by student" )
+
+g2 <- plot_by_category(pub_data_factored,1,2)
+g3 <- plot_by_category(pub_data_factored,1,3)
+g4 <- plot_by_category(pub_data_factored,1,4)
+g5 <- pub_data_factored%>%
+      mutate(Prestige_Score = fct_collapse(Prestige_Score_Range,"0-2 " = c("0-1 ","1-2 ")))%>%
+      select(-Prestige_Score_Range )%>%
+      plot_by_category(1,6)
+ 
 grid.arrange(
-  plot_by_category(pub_data_factored,1,2), 
-  plot_by_category(pub_data_factored,1,4),
-  plot_by_category(pub_data_factored,1,3), 
-              pub_data_factored%>%
-                mutate(Prestige_Score = fct_collapse(Prestige_Score_Range,"0-2 " = c("0-1 ","1-2 ")))%>%
-                select(-Prestige_Score_Range )%>%
-                plot_by_category(1,6),
-  ncol =2,
+  arrangeGrob(g1,arrangeGrob(g2, g3, nrow=2),ncol=2),
+  arrangeGrob(g4,g5,ncol =2),
+  nrow = 2,
   top = "Distribution of number of articles published split by category levels")
+}
+  
+plots_for_EDA()
 
 #Visualization for numerical data
 
@@ -101,14 +124,7 @@ pub.glm <- glm(pub_data$Articles ~ .,data = pub_data, family = poisson)
 summary(pub.glm)
 
 #Archive
-pub_data %>% group_by(Articles, Gender, Mentor_publications, Marital_Status) %>% summarise(value = length(Articles)) %>% 
-  ggplot(aes (x= Mentor_publications, y = Articles, size = value, col = Marital_Status))+
-    geom_point(alpha = 0.5)+
-    theme(legend.position = "top",
-          legend.direction = "horizontal",
-          plot.title = element_text(hjust = 0.5))+
-    labs(title = "Data distribution by category levels", x = "Mentor publications", y = "Articles published" )+
-    facet_grid(~Gender)
+
   
   
   boxplot_fn <- function(x_data, x, xlab) 
