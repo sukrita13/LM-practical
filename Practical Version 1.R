@@ -1,4 +1,3 @@
-
 #Load libraries
 library(tidyverse)
 library(ggplot2)
@@ -6,6 +5,7 @@ library(magrittr)
 library(corrgram)
 library(ggpubr)
 library(gridExtra)
+library(forcats)
 
 #Data load and summary 
 pub_data <- as.data.frame(readr::read_csv("pub.csv",
@@ -20,7 +20,7 @@ str(pub_data)
 
 pub_data_factored <- pub_data %>% 
   mutate_at("No_of_kids",as.factor)%>%
-  mutate( Prestige_Cat= as.factor(paste(ceiling(Prestige_Score)-1,"-",ceiling(Prestige_Score)," ",sep = "")) )%>%
+  mutate( Prestige_Score_Range= as.factor(paste(ceiling(Prestige_Score)-1,"-",ceiling(Prestige_Score)," ",sep = "")) )%>%
   select(-Prestige_Score)
 
 summary(pub_data_factored)
@@ -65,7 +65,7 @@ title(xlab="Number of articles", ylab="Frequency")
 #Visualization for categorical data
 plot_by_category <- function(x_data,x, cat)  {
   x_data %>%
-    ggplot( aes(x=x_data[,x], color="x_data[,cat]",alpha=.25, fill=x_data[,cat])) +
+    ggplot( aes(x=x_data[,x], color=x_data[,cat],alpha=.25, fill=x_data[,cat])) +
     geom_histogram(aes(y=..density..), binwidth = 1, 
                    position="identity")+
     geom_density(alpha=.1) +
@@ -81,28 +81,20 @@ plot_by_category <- function(x_data,x, cat)  {
     facet_wrap(~x_data[,cat])
 }
 
-
-summary()
-
-data_trans <- pub_data %>% 
-              mutate(Prestige_Cat = ifelse(ceiling(Prestige_Score)==1,2,ceiling(Prestige_Score))) %>% 
-              mutate_at("Prestige_Cat", as.factor)
-A <- ifelse(
-            ceiling(pub_data[,5])==1,
-            2,
-            ceiling(pub_data[,5])
-            )
-summary(as.factor(A))
-plot_by_category(data_trans,1,7)
-
-
 grid.arrange(
-  arrangeGrob(plot_by_category(pub_data_factored,1,2), 
-              plot_by_category(pub_data_factored,1,3), 
-              nrow=2), 
-  plot_by_category(pub_data_factored,1,4) ,
-  nrow = 1,
+  plot_by_category(pub_data_factored,1,2), 
+  plot_by_category(pub_data_factored,1,4),
+  plot_by_category(pub_data_factored,1,3), 
+              pub_data_factored%>%
+                mutate(Prestige_Score = fct_collapse(Prestige_Score_Range,"0-2 " = c("0-1 ","1-2 ")))%>%
+                select(-Prestige_Score_Range )%>%
+                plot_by_category(1,6),
+  ncol =2,
   top = "Distribution of number of articles published split by category levels")
+
+#Visualization for numerical data
+
+
 
 #Model1
 pub.glm <- glm(pub_data$Articles ~ .,data = pub_data, family = poisson)
