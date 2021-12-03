@@ -27,6 +27,8 @@ pub_data_factored <- pub_data %>%
 
 summary(pub_data_factored)
 
+pub_data_factored%>%filter (Marital_Status == "Married") %>% group_by(No_of_kids) %>% summarize(t = length(No_of_kids)/length(pub_data_factored%>%filter (Marital_Status == "Married") ))
+
 #Overdispersion summary
 c(Mean = mean(pub_data[,1]) ,
           Variance = var(pub_data[,1]),
@@ -56,6 +58,7 @@ pub_data %>%
   scale_fill_manual(values=c("#eff3ff","#9ecae1"))+
   labs(title = "Marriage vs kids",  y = "Frequency" )+
   theme(plot.title = element_text(hjust = 0.5))
+
 
 #Articles vs poisson distribution
 x <- seq(min(pub_data$Articles), max(pub_data$Articles), by = 1)
@@ -91,7 +94,6 @@ g1 <- pub_data_factored %>%
       summarise(Mean = mean(Articles), No_of_students  = length(Articles)) %>% 
       ggplot(aes (x= Mentor_publications, y = Mean, size = No_of_students))+
       geom_point(alpha = 0.5, col = "#08519c")+
-      ylim(0,5)+
       theme_bw()+
       theme(legend.position = "none",
             panel.background = element_blank())+
