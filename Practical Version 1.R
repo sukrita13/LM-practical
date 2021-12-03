@@ -7,6 +7,7 @@ library(ggpubr)
 library(gridExtra)
 library(forcats)
 library(rsq)
+library(pscl)
 
 #Data load and summary 
 pub_data <- as.data.frame(readr::read_csv("pub.csv",
@@ -116,11 +117,9 @@ grid.arrange(
   
 plots_for_EDA()
 
-#Model1 - Natural Poisson
+#Model1 - First Poisson
 pub.glm <- glm(Articles ~ .,data = pub_data, family = poisson)
 summary(pub.glm)
-par(mfrow = c(3,2))
-plot(pub.glm, which = c(1:6))
 rsq.kl(pub.glm)
 
 #Null and Saturated likelihood
@@ -129,53 +128,83 @@ lnull <- sum(pub_data$Articles * log(mean(pub_data$Articles)) - mean(pub_data$Ar
 lf <- sum(y * log(y) - y - log(factorial(y)))
 2*(lf - lnull) 
 
-#Deviance check - don't use for poisson 
-1 - pchisq(deviance(pub.glm), 915 - 6)
+#Model 2 - Check for interactions
+pub.glm_interactions <- glm(Articles ~ Gender*Marital_Status + Gender*No_of_kids +
+                                      Gender*Prestige_Score + Gender*Mentor_publications ,
+                            data = pub_data,
+                            family = poisson)
+summary(pub.glm_interactions)
+rsq.kl(pub.glm)
 
-#Model 2 - Remove non-significant terms
-pub.glm_reduced <- glm(Articles ~ Mentor_publications + Gender +  No_of_kids,
+#Model 3 - Remove non-significant terms
+pub.glm_reduced <- glm(Articles ~ Gender +  No_of_kids + Mentor_publications + Gender*Prestige_Score,
                       data = pub_data,
                       family = poisson)
 summary(pub.glm_reduced)
 rsq.kl(pub.glm_reduced)
 
-#Deviance check - 2 vs 1
-dev1 <- deviance(pub.glm)
-dev2 <- deviance(pub.glm_reduced)
-1 - pchisq(dev2 - dev1,2)
-#small p value so rej Ho
+#Deviance check - 3 vs 2
+dev2 <- deviance(pub.glm_interactions)
+dev3 <- deviance(pub.glm_reduced)
+1 - pchisq(dev3 - dev2,5)
+#large p value so fail to rej Ho - accept reduced model
 
-#Model 3 - Check for interactions
-pub.glm_interactions <- glm(Articles ~ Gender*Mentor_publications + Gender*No_of_kids,
+#Model 4a - Add mentor^2
+pub.glm_quadratic <- glm(Articles ~ Gender +  No_of_kids + Mentor_publications + I(Mentor_publications^2)  + Gender*Prestige_Score,
                        data = pub_data,
                        family = poisson)
-summary(pub.glm_interactions)
+summary(pub.glm_quadratic)
+rsq.kl(pub.glm_quadratic)
 
+#Deviance check - 4 vs 3
+dev4 <- deviance(pub.glm_quadratic)
+1 - pchisq(dev3 - dev4,1)
+#small p value so rej Ho - accept model 4
+
+#Model 4b - Overdispersion correction
+pub.glm_dispersed <- glm(Articles ~ Gender +  No_of_kids + Mentor_publications + I(Mentor_publications^2)  + Gender*Prestige_Score,
+                         data = pub_data,
+                         family = quasipoisson)
+summary(pub.glm_dispersed)
+rsq.kl(pub.glm_dispersed)
+
+#Model 5 - Removing Prestige Score??
+pub.glm_final <- glm(Articles ~ Gender +  No_of_kids + Mentor_publications + I(Mentor_publications^2),
+                         data = pub_data,
+                         family = poisson)
+summary(pub.glm_final)
+rsq.kl(pub.glm_final)
+
+#Deviance check - 5 vs 4
+dev5 <- deviance(pub.glm_final)
+1 - pchisq(dev5 - dev4,2)
+#small p value so rej Ho - accept model 4??
 
 #Standardized deviance residuals vs fitted values 
-summary(rstandard(pub.glm_reduced))
-var(rstandard(pub.glm_reduced))
-plot(predict(pub.glm_reduced,
+summary(rstandard(pub.glm_final))
+var(rstandard(pub.glm_final))
+plot(predict(pub.glm_final,
              type="response"),
-     rstandard(pub.glm_reduced),
+     rstandard(pub.glm_final),
      xlab=expression(hat(mu)), ylab="Deviance Residuals",
      pch=19, col = "#08519c")
 
 
 #Dispersion correction
-phi_estimate <- sum(residuals(pub.glm_reduced, type="pearson")^2)/(915-4)
-pub.glm_dispersed <- glm(pub_data$Articles ~ Mentor_publications + Gender +  No_of_kids,data = pub_data, family = quasipoisson)
-summary(pub.glm_dispersed)
-names(pub.glm_dispersed)
-rsq.kl(pub.glm_dispersed)
-1-pub.glm_dispersed$deviance/pub.glm_dispersed$null.deviance
+phi_estimate <- sum(residuals(pub.glm_final, type="pearson")^2)/(915-5)
+pub.glm_final_dispersed <- glm(Articles ~ Gender +  No_of_kids + Mentor_publications + I(Mentor_publications^2),data = pub_data, family = quasipoisson)
+summary(pub.glm_final_dispersed)
+rsq.kl(pub.glm_final_dispersed)
+1-pub.glm_final_dispersed$deviance/pub.glm_final_dispersed$null.deviance
 
 
 #Zero count correction - Hurdle mixture model
-pub.glm_zeroinf <- hurdle(Articles ~ ., data = pub_data)
+pub.glm_zeroinf <- hurdle(Articles ~ Gender +  No_of_kids + Mentor_publications, data = pub_data)
 summary(pub.glm_zeroinf)
-deviance(pub.glm_zeroinf)
-1-pub.glm_zeroinf$deviance/pub.glm_zeroinf$null.deviance
+
+
+#Levarage and cooks distance
+
 
 
 
