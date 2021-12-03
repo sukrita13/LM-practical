@@ -64,10 +64,10 @@ lines(x+0.5,dpois(x,lambda=mean(pub_data$Articles))*nrow(pub_data), col="#08519c
 title(xlab="Number of articles", ylab="Frequency")
 #why is this not 'beside' ? how to do this in ggplot?
 
-#EDA Plots
 
-plots_for_EDA <- function() { 
-plot_by_category <- function(x_data,x, cat)  {
+plots_for_EDA <- function(x_data) { 
+  
+plot_by_category <- function(x_data,x,cat)  {
   x_data %>%
     ggplot( aes(x=x_data[,x],alpha=.25, fill=x_data[,cat])) +
     geom_histogram(aes(y=..density..), binwidth = 1, 
@@ -100,10 +100,10 @@ g1 <- pub_data_factored %>%
            x = "Number of publications by mentor", 
            y = "Mean number of publications by student" )
 
-g2 <- plot_by_category(pub_data_factored,1,2)
-g3 <- plot_by_category(pub_data_factored,1,3)
-g4 <- plot_by_category(pub_data_factored,1,4)
-g5 <- pub_data_factored%>%
+g2 <- plot_by_category(x_data,1,2)
+g3 <- plot_by_category(x_data,1,3)
+g4 <- plot_by_category(x_data,1,4)
+g5 <- x_data%>%
       mutate(Prestige_Score = fct_collapse(Prestige_Score_Range,"0-2 " = c("0-1 ","1-2 ")))%>%
       select(-Prestige_Score_Range )%>%
       plot_by_category(1,6)
@@ -115,7 +115,7 @@ grid.arrange(
   top = "Distribution of number of articles published split by category levels")
 }
   
-plots_for_EDA()
+plots_for_EDA(pub_data_factored)
 
 #Model1 - First Poisson
 pub.glm <- glm(Articles ~ .,data = pub_data, family = poisson)
@@ -135,6 +135,7 @@ pub.glm_interactions <- glm(Articles ~ Gender*Marital_Status + Gender*No_of_kids
                             family = poisson)
 summary(pub.glm_interactions)
 rsq.kl(pub.glm)
+step(pub.glm_interactions)
 
 #Model 3 - Remove non-significant terms
 pub.glm_reduced <- glm(Articles ~ Gender +  No_of_kids + Mentor_publications + Gender*Prestige_Score,
@@ -146,65 +147,122 @@ rsq.kl(pub.glm_reduced)
 #Deviance check - 3 vs 2
 dev2 <- deviance(pub.glm_interactions)
 dev3 <- deviance(pub.glm_reduced)
-1 - pchisq(dev3 - dev2,5)
+1 - pchisq(dev3 - dev2,length(coefficients(pub.glm_interactions))-length(coefficients(pub.glm_reduced)))
 #large p value so fail to rej Ho - accept reduced model
 
-#Model 4a - Add mentor^2
-pub.glm_quadratic <- glm(Articles ~ Gender +  No_of_kids + Mentor_publications + I(Mentor_publications^2)  + Gender*Prestige_Score,
-                       data = pub_data,
-                       family = poisson)
-summary(pub.glm_quadratic)
-rsq.kl(pub.glm_quadratic)
+#Should not maybe - not sure ????
+      #Model 4a - Add mentor^2 
+      pub.glm_quadratic <- glm(Articles ~ Gender +  No_of_kids + Mentor_publications + I(Mentor_publications^2)  + Gender*Prestige_Score,
+                             data = pub_data,
+                             family = poisson)
+      summary(pub.glm_quadratic)
+      rsq.kl(pub.glm_quadratic)
+      
+      #Deviance check - 4 vs 3
+      dev4 <- deviance(pub.glm_quadratic)
+      1 - pchisq(dev3 - dev4,length(coefficients(pub.glm_quadratic))-length(coefficients(pub.glm_reduced)))
+      #small p value so rej Ho - accept model 4
 
-#Deviance check - 4 vs 3
-dev4 <- deviance(pub.glm_quadratic)
-1 - pchisq(dev3 - dev4,1)
-#small p value so rej Ho - accept model 4
+      #Model 4b - Overdispersion correction
+      pub.glm_quadratic_dispersed <- glm(Articles ~ Gender +  No_of_kids + Mentor_publications + I(Mentor_publications^2)  + Gender*Prestige_Score,
+                               data = pub_data,
+                               family = quasipoisson)
+      summary(pub.glm_dispersed)
+      rsq.kl(pub.glm_dispersed)
 
-#Model 4b - Overdispersion correction
-pub.glm_dispersed <- glm(Articles ~ Gender +  No_of_kids + Mentor_publications + I(Mentor_publications^2)  + Gender*Prestige_Score,
-                         data = pub_data,
-                         family = quasipoisson)
-summary(pub.glm_dispersed)
-rsq.kl(pub.glm_dispersed)
-
-#Model 5 - Removing Prestige Score??
-pub.glm_final <- glm(Articles ~ Gender +  No_of_kids + Mentor_publications + I(Mentor_publications^2),
-                         data = pub_data,
-                         family = poisson)
+#Final Model
+pub.glm_final <- pub.glm_reduced
 summary(pub.glm_final)
 rsq.kl(pub.glm_final)
 
-#Deviance check - 5 vs 4
-dev5 <- deviance(pub.glm_final)
-1 - pchisq(dev5 - dev4,2)
-#small p value so rej Ho - accept model 4??
 
-#Standardized deviance residuals vs fitted values 
-summary(rstandard(pub.glm_final))
-var(rstandard(pub.glm_final))
-plot(predict(pub.glm_final,
-             type="response"),
-     rstandard(pub.glm_final),
-     xlab=expression(hat(mu)), ylab="Deviance Residuals",
-     pch=19, col = "#08519c")
-
-
-#Dispersion correction
-phi_estimate <- sum(residuals(pub.glm_final, type="pearson")^2)/(915-5)
-pub.glm_final_dispersed <- glm(Articles ~ Gender +  No_of_kids + Mentor_publications + I(Mentor_publications^2),data = pub_data, family = quasipoisson)
+#phi estimate
+sum(residuals(pub.glm_final, type="pearson")^2)/(nrow(pub_data)- length(coefficients(pub.glm_final)))
+#Dispersion corrected model
+pub.glm_final_dispersed <- glm(Articles ~ Gender + No_of_kids + Mentor_publications + Gender*Prestige_Score,
+                               data = pub_data, 
+                               family = quasipoisson)
 summary(pub.glm_final_dispersed)
 rsq.kl(pub.glm_final_dispersed)
 1-pub.glm_final_dispersed$deviance/pub.glm_final_dispersed$null.deviance
 
 
 #Zero count correction - Hurdle mixture model
-pub.glm_zeroinf <- hurdle(Articles ~ Gender +  No_of_kids + Mentor_publications, data = pub_data)
+pub.glm_zeroinf <- hurdle(Articles ~ Gender +  No_of_kids  + Gender*Prestige_Score | Mentor_publications, data = pub_data)
 summary(pub.glm_zeroinf)
 
 
-#Levarage and cooks distance
+#Diagnostic plots
+qqnorm(rstandard(pub.glm_final), pch=19, main="")
+qqline(rstandard(pub.glm_final))
 
+diagnostic_plots <- function(x_glm, x_data) {
+p <- length(coefficients(x_glm))
+n <- nrow(x_data)
+h <- 8/(n - 2*p)
+
+g1 <- ggplot(x_glm,aes(x = predict(x_glm,type="response"), y = rstandard(x_glm))) +
+  geom_point(size = 0.75)+
+  labs(title = "Residuals vs Fitted", y = "Standardized deviance residuals", x = "Fitted values")+
+  geom_hline(yintercept=0,linetype="dashed")+
+  theme(plot.title = element_text(hjust = 0.5,size=9.5),
+        axis.title.x = element_text(size = 7.5),
+        axis.title.y = element_text(size = 7.5))+
+  geom_text(data = . %>% 
+              mutate(label = ifelse(cooks.distance(x_glm) >5*h, 1:n, "")),
+            aes(label = label), 
+            hjust = 1.2,
+            size = 2.5,
+            show.legend = FALSE)
+
+g2 <- ggplot(x_glm, aes(x = predict(x_glm,type="response"), y = influence(x_glm)$hat/(p/n))) +
+  geom_point(size = 0.75)+
+  geom_hline(yintercept=2,color="red",linetype="dashed")+
+  labs(title = "Leverage vs Fitted values", y = "Leverage / (p/n)", x = "Fitted values")+
+  theme(plot.title = element_text(hjust = 0.5,size=9.5),
+        axis.title.x = element_text(size = 7.5),
+        axis.title.y = element_text(size = 7.5))+
+  geom_text(data = . %>% 
+            mutate(label = ifelse(influence(x_glm)$hat/(p/n) > 10, 1:n, "")),
+            aes(label = label), 
+            hjust = 1.2,
+            size = 2.5,
+            show.legend = FALSE)
+
+g3 <- ggplot(x_glm, aes(x = predict(x_glm,type="response"), y = cooks.distance(x_glm))) +
+  geom_point(size = 0.75)+
+  labs(title = "Cook's distance", y = "Cook's distance", x = "Fitted values")+
+  geom_hline(yintercept=h,color="red",linetype="dashed")+
+  geom_text( data = . %>% 
+               mutate(label = ifelse(cooks.distance(x_glm) > 5*h,1:n, "")),
+             aes(label = label), 
+             hjust = 1.2,
+             size = 2.5,
+             show.legend = FALSE)+
+  theme(plot.title = element_text(hjust = 0.5,size=9.5),
+        axis.title.x = element_text(size = 7.5),
+        axis.title.y = element_text(size = 7.5))
+
+
+grid.arrange( g1,arrangeGrob(g2, g3, ncol=2),nrow=2,top = "Model diagnostic plots")
+
+}
+
+diagnostic_plots(pub.glm_final,pub_data)
+
+#Outliers
+pub_data[c(328,911,912,913,914,915),]
+
+#Remove outliers
+pub_data_outliers_remove_check <- pub_data[-c(328,911,912,913,914,915),]
+pub.glm_outliers_remove_check <- glm(Articles ~ Gender + No_of_kids + Mentor_publications + Gender*Prestige_Score,
+                     data = pub_data_outliers_remove_check,
+                     family = poisson)
+summary(pub.glm_outliers_remove_check)
+diagnostic_plots(pub.glm_outliers_remove_check,pub_data_outliers_remove_check)
+rsq.kl(pub.glm_outliers_remove_check)
+
+#Interpretation tables
 
 
 
