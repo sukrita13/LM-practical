@@ -1,0 +1,285 @@
+\documentclass{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage{float}
+\usepackage{booktabs}
+\newcommand{\squeezeup}{\vspace{-2.5mm}}
+
+\begin{document}
+\title{GLM Practical Report}
+\author{Submitted by: P682}
+\maketitle
+\thispagestyle{plain}
+
+<<library_data_load, cache = TRUE, autodep = TRUE, echo = FALSE, tidy = TRUE, message = FALSE, warning=FALSE>>=
+library(knitr)
+library(kableExtra)
+library(tidyverse)
+library(ggplot2)
+library(magrittr)
+library(ggcorrplot)
+library(cowplot)
+library(ggpubr)
+library(grid)
+library(gridExtra)
+library(forcats)
+library(rsq)
+library(pscl)
+pub_data <- as.data.frame(readr::read_csv("pub.csv",
+                            skip =1,
+                            col_names = c("Articles","Gender","Marital_Status",
+                                          "No_of_kids","Prestige_Score","Mentor_publications"),
+                            col_types = "iffidi"))
+levels(pub_data$Gender) <- c("Male","Female")
+levels(pub_data$Marital_Status) <- c("Married","Unmarried")
+pub_data$Marital_Status <- fct_relevel(pub_data$Marital_Status, c("Unmarried","Married"))
+
+pub_data_factored <- pub_data %>% 
+  mutate_at("No_of_kids",as.factor)%>%
+  mutate( Prestige_Range= as.factor(paste(ceiling(Prestige_Score)-1,"-",ceiling(Prestige_Score)," ",sep = "")) )%>%
+  select(Articles,Mentor_publications,Gender,Marital_Status,No_of_kids,Prestige_Range)
+@
+
+<<model_plot_setup,echo = FALSE,cache = TRUE, autodep = TRUE, tidy = TRUE, message = FALSE>>=
+plots_for_EDA <- function(x_data) { 
+  
+plot_by_category <- function(x_data,x,cat)  {
+  x_data %>%
+    ggplot( aes(x=x_data[,x],alpha=.25, fill=x_data[,cat])) +
+    geom_histogram(aes(y=..density..), binwidth = 1, 
+                   position="identity")+
+    geom_density(alpha=.1, color="#08519c") +
+    theme_bw()+
+    theme(legend.position="none",
+          panel.spacing = unit(0.1, "lines"),
+          strip.text.x = element_text(size = 8)
+          )+
+    scale_color_brewer("Blues")+
+    scale_fill_brewer("Blues")+
+    labs(title = paste("By",colnames(x_data)[cat]), 
+         x = "Number of articles published", 
+         y = "Frequency") +
+    facet_wrap(~x_data[,cat])
+}
+
+g1 <- pub_data_factored %>% 
+      group_by(Mentor_publications) %>% 
+      summarise(Mean = mean(Articles), No_of_students  = length(Articles)) %>% 
+      ggplot(aes (x= Mentor_publications, y = Mean, size = No_of_students))+
+      geom_point(alpha = 0.5, col = "#08519c")+
+      theme_bw()+
+      theme(legend.position = "none",
+            panel.background = element_blank()
+            )+
+      scale_size(range = c(0.1, 15))+
+      labs(title = "By number of mentor publications", 
+           x = "Number of publications by mentor", 
+           y = "Mean number of publications by student" )
+
+g2 <- plot_by_category(x_data,1,3)
+g3 <- plot_by_category(x_data,1,4)
+g4 <- plot_by_category(x_data,1,5)
+g5 <- x_data%>%
+      mutate(Prestige_Score = fct_collapse(Prestige_Range,"0-2 " = c("0-1 ","1-2 ")))%>%
+      select(-Prestige_Range )%>%
+      plot_by_category(1,6)
+ 
+grid.arrange(
+  arrangeGrob(g1,arrangeGrob(g2, g3, nrow=2),ncol=2),
+  arrangeGrob(g4,g5,ncol =2),
+  nrow = 2)
+}
+
+diagnostic_plots <- function(x_glm, x_data) {
+p <- length(coefficients(x_glm))
+n <- nrow(x_data)
+h <- 8/(n - 2*p)
+
+g1 <- ggplot(x_glm,aes(x = predict(x_glm,type="response"), y = rstandard(x_glm))) +
+  geom_point(size = 0.75)+
+  labs(title = "Residuals vs Fitted", y = "Standardized deviance residuals", x = "Fitted values")+
+  geom_hline(yintercept=0,linetype="dashed")+
+  theme(plot.title = element_text(hjust = 0.5,size=9.5),
+        axis.title.x = element_text(size = 7.5),
+        axis.title.y = element_text(size = 7.5))+
+  geom_text(data = . %>% 
+              mutate(label = ifelse(cooks.distance(x_glm) >5*h, 1:n, "")),
+            aes(label = label), 
+            hjust = 1.2,
+            size = 2.5,
+            show.legend = FALSE)
+
+g2 <- ggplot(x_glm, aes(x = predict(x_glm,type="response"), y = influence(x_glm)$hat/(p/n))) +
+  geom_point(size = 0.75)+
+  geom_hline(yintercept=2,color="red",linetype="dashed")+
+  labs(title = "Leverage vs Fitted values", y = "Leverage / (p/n)", x = "Fitted values")+
+  theme(plot.title = element_text(hjust = 0.5,size=9.5),
+        axis.title.x = element_text(size = 7.5),
+        axis.title.y = element_text(size = 7.5))+
+  geom_text(data = . %>% 
+            mutate(label = ifelse(influence(x_glm)$hat/(p/n) > 10, 1:n, "")),
+            aes(label = label), 
+            hjust = 1.2,
+            size = 2.5,
+            show.legend = FALSE)
+
+g3 <- ggplot(x_glm, aes(x = predict(x_glm,type="response"), y = cooks.distance(x_glm))) +
+  geom_point(size = 0.75)+
+  labs(title = "Cook's distance", y = "Cook's distance", x = "Fitted values")+
+  geom_hline(yintercept=h,color="red",linetype="dashed")+
+  geom_text( data = . %>% 
+               mutate(label = ifelse(cooks.distance(x_glm) > 5*h,1:n, "")),
+             aes(label = label), 
+             hjust = 1.2,
+             size = 2.5,
+             show.legend = FALSE)+
+  theme(plot.title = element_text(hjust = 0.5,size=9.5),
+        axis.title.x = element_text(size = 7.5),
+        axis.title.y = element_text(size = 7.5))
+
+
+grid.arrange( g1,arrangeGrob(g2, g3, ncol=2),nrow=2,top = "Model diagnostic plots")
+
+}
+@
+
+\section{Introduction}
+We are provided data for number of publications by PhD students in biochemistry during the last three years of their PhD and possible explanatory variables with the objective of fitting a generalized linear model that captures the distribution of number of articles published. 
+The variables of interest are - 
+\begin{itemize}
+\item Gender
+\item Marital Status
+\item Number of children less than 6 years old
+\item Prestige score of the graduate program (higher the score, higher the prestige)
+\item Number of articles published by the student's mentor
+\end{itemize}
+The report aims to describe the model chosen and the implied effect the above mentioned factors have on distribution of number of articles. It also aims to bring out the rationale behind model selection and accompanying data analysis. 
+
+\newpage
+\section{Exploratory data analysis}
+An initial look at the data shows the following -
+
+\begin{figure}[H]
+\centering
+<<data_summary_intro,echo = FALSE,cache = TRUE, autodep = TRUE, tidy = TRUE,  message = FALSE>>=
+options(knitr.kable.NA = '')
+summary(pub_data_factored) %>%
+  kable(
+        digits = 0 ,
+        align = "ccccc",
+        booktabs = T
+        ) %>% 
+        row_spec(0,bold=TRUE)
+
+@
+\caption{\textbf{Input data summary}:\textit{The table shows the summary statistics for the number of publications, both by the student and by the mentor along with count by factor level for the remaining explanatory variables. Prestige Score is on a continuous scale between 0-5 so we look at distribution between ranges.}}
+\label{table:IntroSummary}
+\end{figure}
+It is easy to see that the data does not present any immediate issues and all variables are within plausible ranges. The number of publications by the students varies between 0 and 19, heavily concentrated in the lower range, with 75\% of the students publishing less than 3 articles. The range of number of publications by the mentor is much more spread, varying between 0 and 77, but also displays the same feature of being heavily concentrated in the lower range with 75\% mentors publishing under 13 articles.
+This is in line with expectations as we will expect only a few individuals to be highly productive. The mean number of publications by the students is $\sim$ 2 , comparing to 6 for mentors which also seems justified as we would expect mentors to be publishing more actively. 
+\\
+\\The split by gender is largely balanced (54\% males to 46\% females). Two-third of the individuals in the sample are married as opposed to one-third not married and c.65\% do not have a child under 6 years to take care of. Prestige score is on a continuous scale, varying between 0-5. A look at split between these ranges suggests around half of the individuals enrolled in better than 'average' programmes (rating $>$ 3) and almost negligible (c. 0.5\%) in  programmes with a rating $<$ 1.  
+\\
+\\
+Given the distribution is for the count of articles published, Poisson model with the canonical link function $\mu = \lambda = \exp^{\eta} = \exp^{x^T\beta} $ is the most intuitive choice. Looking at how counts in the sample data are distributed, a Poisson model seems reasonable.
+\begin{figure}[H]
+\centering
+\squeezeup
+\squeezeup
+\squeezeup
+\squeezeup
+\squeezeup
+\squeezeup
+\squeezeup
+\squeezeup
+<<graph1,echo = FALSE,cache = TRUE, autodep = TRUE, tidy = TRUE,fig.width = 6, fig.height = 4,message = FALSE>>=
+x <- seq(min(pub_data$Articles), max(pub_data$Articles), by = 1)
+par(mgp=c(1.5,0.5,0))
+barplot(table(pub_data$Articles), 
+        beside = TRUE, 
+        ylim = c(0, 0.35*nrow(pub_data)), 
+        col = "#eff3ff",
+        cex.axis= 0.5,
+        cex.names= 0.5)
+lines(x+0.5,dpois(x,lambda=mean(pub_data$Articles))*nrow(pub_data), col="#08519c",lwd = 2)
+title(xlab="Number of articles", ylab="Frequency",
+        cex.lab = 0.5)
+@
+\squeezeup
+\squeezeup
+\squeezeup
+\squeezeup
+\squeezeup
+\squeezeup
+\caption{\textbf{Distribution of number of articles published}}
+\label{fig:graph1}
+\end{figure}
+There is, however, a significantly higher frequency for zeros in that data than a Poisson model with the same mean would suggest. This could be a feature of how data across category levels is distributed but should be investigated in the final model.\\
+\\
+Looking at correlations between these factors (see figure below), it is clear that the number of publications by the student and the mentor are significantly correlated (correlation coefficient = 0.31) with only weak to moderate correlation between number of student's publications against other explanatory variables. 
+
+\begin{figure}[H]
+\centering
+
+<<graph2,echo = FALSE,cache = TRUE, autodep = TRUE, tidy = TRUE, fig.width = 15, fig.height = 6.5, warning=FALSE,message = FALSE>>=
+plot_grid(
+   ggcorrplot(
+      pub_data %>% 
+      mutate_if(is.factor, as.numeric) %>% 
+      cor, type = "lower",
+      outline.col = "white",
+      ggtheme = ggplot2::theme_gray,
+      colors = c("#3182bd","#eff3ff","#3182bd")),
+   
+    pub_data %>%
+      group_by (Marital_Status, No_of_kids) %>% 
+      summarize(value = length(Marital_Status))%>%
+      ggplot(aes(fill= Marital_Status, y= value, x= No_of_kids)) + 
+      geom_bar(position = position_dodge2(preserve = "single",padding = 0) , 
+               stat="identity",
+               colour = "black", 
+               width = 0.75)+ 
+      scale_fill_manual(values=c("#eff3ff","#c6dbef"))+
+      labs(title = "Marriage vs kids",  y = "Frequency" )+
+      theme(plot.title = element_text(hjust = 0.5)),
+      ncol = 2
+   )
+@
+
+\squeezeup
+\squeezeup
+\squeezeup
+\caption{\textbf{Relationship between covariates}:\textit{The first figure is a graphical representation of the correlations between recorded variables and the second figure plots the frequency for marital status split by number of kids.}}
+\label{fig:graph2}
+\end{figure}
+
+Additionally, marital status and number of kids are significantly correlated (correlation coefficient = 0.46). A closer look at the data by means of plotting the frequency for marital status as a function of number of kids suggests a clear pattern: there are no single parents in the data, which drives the high correlation between the two variables. This suggests that our model may not additionally benefit from including marital status if we know the number of kids, unless there is a very significant difference between publication distributions for married without kids and unmarried students.
+\\
+\\Looking further at how number of articles published by individuals vary by explanatory variables, we have some initial expectations around their impact on the distribution -
+
+\begin{figure}[H]
+\centering
+<<graph3,echo = FALSE,cache = TRUE, autodep = TRUE, tidy = TRUE, message = FALSE>>=
+#plots_for_EDA(pub_data_factored)
+include_graphics("Rplot.pdf")
+@
+\squeezeup
+\squeezeup
+\squeezeup
+\caption{\textbf{Distribution of data by combined factor levels}:\textit{The first plot shows the mean number of articles published by the student against the number of articles published by the mentor, with the size of the bubble depiciting the number of students in that category. Other plots show the distribution of the proportion of individuals in a given category level producing a certain number of articles. Distribution by prestige score is grouped in ranges of unit interval (grouped 0-2 given negligible number for a score $<$ 1).}}
+\label{fig:graph3}
+\end{figure}
+
+\begin{itemize}
+\item Number of articles published by the student and the mentor exhibits a visible positive relationship, the mean number of articles published by the student is high when that by the mentor is high. 
+\item The distribution seems to be more concentrated in lower ranges for females than males i.e frequency of lower counts ($<$ 2) are higher for females compared to males.
+\item There is no significant observable impact from difference in  marital status.
+\item The number of kids seems to have an impact - the proportion of individuals with $<$ 1 article published clearly increases as we go from 0 to 3 kids.
+\item The proportions by prestige range seem similar in the lower ranges, but does improve comparatively where score $>$ 4. 
+\end{itemize}
+
+Hence overall, there seems to be a difference in number of articles published due to variation in the values of the explanatory variable - specifically number of articles appear to increase with an increase in mentor publications and prestige score and decrease with an increase in kids. This forms the basis of our expectation for variable impacts as we look at model fitting.
+
+\end{document}
+
+
