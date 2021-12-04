@@ -11,7 +11,7 @@
 \maketitle
 \thispagestyle{plain}
 
-<<library_data_load, cache = TRUE, autodep = TRUE, echo = FALSE, tidy = TRUE, message = FALSE, warning=FALSE>>=
+<<library_data_load, cache = TRUE, autodep = TRUE, echo = FALSE, tidy = TRUE, message = FALSE>>=
 library(knitr)
 library(kableExtra)
 library(tidyverse)
@@ -25,6 +25,7 @@ library(gridExtra)
 library(forcats)
 library(rsq)
 library(pscl)
+
 pub_data <- as.data.frame(readr::read_csv("pub.csv",
                             skip =1,
                             col_names = c("Articles","Gender","Marital_Status",
@@ -36,7 +37,7 @@ pub_data$Marital_Status <- fct_relevel(pub_data$Marital_Status, c("Unmarried","M
 
 pub_data_factored <- pub_data %>% 
   mutate_at("No_of_kids",as.factor)%>%
-  mutate( Prestige_Range= as.factor(paste(ceiling(Prestige_Score)-1,"-",ceiling(Prestige_Score)," ",sep = "")) )%>%
+  mutate( Prestige_Range = as.factor(paste(ceiling(Prestige_Score)-1,"-",ceiling(Prestige_Score)," ",sep = "")))%>%
   select(Articles,Mentor_publications,Gender,Marital_Status,No_of_kids,Prestige_Range)
 @
 
@@ -176,7 +177,7 @@ summary(pub_data_factored) %>%
 \label{table:IntroSummary}
 \end{figure}
 It is easy to see that the data does not present any immediate issues and all variables are within plausible ranges. The number of publications by the students varies between 0 and 19, heavily concentrated in the lower range, with 75\% of the students publishing less than 3 articles. The range of number of publications by the mentor is much more spread, varying between 0 and 77, but also displays the same feature of being heavily concentrated in the lower range with 75\% mentors publishing under 13 articles.
-This is in line with expectations as we will expect only a few individuals to be highly productive. The mean number of publications by the students is $\sim$ 2 , comparing to 6 for mentors which also seems justified as we would expect mentors to be publishing more actively. 
+This is in line with expectations as we will expect only a few individuals to be highly productive. The mean number of publications by the students is $\sim$2 , comparing to $\sim$9 for mentors which also seems justified as we would expect mentors to be publishing more actively. 
 \\
 \\The split by gender is largely balanced (54\% males to 46\% females). Two-third of the individuals in the sample are married as opposed to one-third not married and c.65\% do not have a child under 6 years to take care of. Prestige score is on a continuous scale, varying between 0-5. A look at split between these ranges suggests around half of the individuals enrolled in better than 'average' programmes (rating $>$ 3) and almost negligible (c. 0.5\%) in  programmes with a rating $<$ 1.  
 \\
@@ -216,34 +217,34 @@ title(xlab="Number of articles", ylab="Frequency",
 \end{figure}
 There is, however, a significantly higher frequency for zeros in that data than a Poisson model with the same mean would suggest. This could be a feature of how data across category levels is distributed but should be investigated in the final model.\\
 \\
-Looking at correlations between these factors (see figure below), it is clear that the number of publications by the student and the mentor are significantly correlated (correlation coefficient = 0.31) with only weak to moderate correlation between number of student's publications against other explanatory variables. 
+Looking at correlations between these factors (see plot 1 below), it is clear that the number of publications by the student and the mentor are significantly correlated (correlation coefficient = 0.31) with only weak to moderate correlation between number of student's publications against other explanatory variables. 
 
 \begin{figure}[H]
 \centering
 
 <<graph2,echo = FALSE,cache = TRUE, autodep = TRUE, tidy = TRUE, fig.width = 15, fig.height = 6.5, warning=FALSE,message = FALSE>>=
-plot_grid(
-   ggcorrplot(
-      pub_data %>% 
-      mutate_if(is.factor, as.numeric) %>% 
-      cor, type = "lower",
-      outline.col = "white",
-      ggtheme = ggplot2::theme_gray,
-      colors = c("#3182bd","#eff3ff","#3182bd")),
-   
-    pub_data %>%
-      group_by (Marital_Status, No_of_kids) %>% 
-      summarize(value = length(Marital_Status))%>%
-      ggplot(aes(fill= Marital_Status, y= value, x= No_of_kids)) + 
-      geom_bar(position = position_dodge2(preserve = "single",padding = 0) , 
-               stat="identity",
-               colour = "black", 
-               width = 0.75)+ 
-      scale_fill_manual(values=c("#eff3ff","#c6dbef"))+
-      labs(title = "Marriage vs kids",  y = "Frequency" )+
-      theme(plot.title = element_text(hjust = 0.5)),
-      ncol = 2
-   )
+ggarrange( 
+          ggcorrplot(
+          pub_data %>% 
+          mutate_if(is.factor, as.numeric) %>% 
+          cor, type = "lower",
+          outline.col = "white",
+          ggtheme = ggplot2::theme_gray,
+          colors = c("#3182bd","#eff3ff","#3182bd")),
+          
+          pub_data %>%
+          group_by (Marital_Status, No_of_kids) %>% 
+          summarize(value = length(Marital_Status))%>%
+          ggplot(aes(fill= Marital_Status, y= value, x= No_of_kids)) + 
+          geom_bar(position = position_dodge2(preserve = "single",padding = 0) , 
+                   stat="identity",
+                   colour = "black", 
+                   width = 0.75)+ 
+          scale_fill_manual(values=c("#eff3ff","#c6dbef"))+
+          labs(title = "Marriage vs kids",  y = "Frequency" )+
+          theme(plot.title = element_text(hjust = 0.5)),
+          
+          ncol = 2)
 @
 
 \squeezeup
@@ -280,6 +281,126 @@ include_graphics("Rplot.pdf")
 
 Hence overall, there seems to be a difference in number of articles published due to variation in the values of the explanatory variable - specifically number of articles appear to increase with an increase in mentor publications and prestige score and decrease with an increase in kids. This forms the basis of our expectation for variable impacts as we look at model fitting.
 
+\newpage
+\section{Model fitting and testing}
+\subsection{Considering all main effects}
+We start with the Poisson model with $\eta$ given by - $$\eta = Intercept~+~Gender~+~Marital~Status~+~No~of~kids~+~Prestige~Score~+ ~Mentor~Publications $$
+i.e we consider the main effects of all available variables but no interactions. Gender and marital status are categorical variables and the remaining are continuous variables. The baseline level is an unmarried male. 
+\\
+\\The coefficients and their corresponding standard errors are obtained as -
+\begin{figure}[H]
+\centering
+<<model1,echo = FALSE,cache = TRUE, autodep = TRUE, tidy = TRUE,  message = FALSE >>=
+pub.glm <- glm(Articles ~ .,data = pub_data, family = poisson)
+
+summary(pub.glm)$coefficients %>%
+  kable(digits = 3 ,
+        align = "rrrrr",
+        booktabs = T,
+        format.args = list(big.mark = ",",scientific = FALSE),
+        col.names = c("Estimate","Std Error","z value","p value")
+        )%>%
+        row_spec(0,bold=TRUE)
+@
+\caption{\textbf{Coefficient results - Main effects of all available variables}}
+\label{table:ANOVA_model1}
+\end{figure}
+
+At a 5\% significance level, all factors seem to have a statistically significant impact (p values are small) with the exception of prestige score. Before we eliminate the variable as a predictor however, we consider the interactions with other variables to check if we are missing any key dependencies.
+
+\subsection{Considering all main effects and interactions with gender}
+We consider all main effects, as before, and additionally how different variables interact with gender. The results for coefficients are as below - 
+\begin{figure}[H]
+\centering
+<<model2,echo = FALSE,cache = TRUE, autodep = TRUE, tidy = TRUE,  message = FALSE >>=
+pub.glm_interactions <- glm(Articles ~ Gender*Marital_Status + Gender*No_of_kids +
+                                      Gender*Prestige_Score + Gender*Mentor_publications ,
+                            data = pub_data,
+                            family = poisson)
+
+summary(pub.glm_interactions)$coefficients %>%
+  kable(digits = 3 ,
+        align = "rrrrr",
+        booktabs = T,
+        format.args = list(big.mark = ",",scientific = FALSE),
+        col.names = c("Estimate","Std Error","z value","p value")
+        )%>%
+        row_spec(0,bold=TRUE)
+@
+\caption{\textbf{Coefficient results - Main effects and interactions with gender}}
+\label{table:ANOVA_model2}
+\end{figure}
+
+Note that the impacts observed are largely consistent with the conclusions based on exploratory data analysis - 
+\begin{itemize}
+\item The number of publications by the mentor is clearly the most significant factor and has a positive coefficient implying student publishing activity is high when mentor publishing activity is high.
+\item Coefficient for female gender is negative which implies lower mean number of articles for a female compared to the baseline (male).
+\item The negative coefficient associated with number of kids suggests publishing activity reduces for students who have kids, as we have seen. 
+\item Marital status does not have a statistically significant impact. 
+\item Prestige score while alone does not have a statistically significant impact does interact with gender to produce a significant impact. The coefficient is positive implying that the difference in male female productivity reduces when the students are enrolled in a high prestige programme. This could be driving the improvement in publication distribution observed in fig~\ref{fig:graph3} for higher prestige bands. This is plausible, for example, if a low prestige score may be associated with higher discriminatory behaviour, affecting productivity of females as compared to males.
+\item No other pair of variables have a statistically significant interaction.
+\end{itemize}
+
+Based on the results from the model above, we remove the factors that are not statistically significant to obtain a reduced model.
+
+\subsection{Considering statistically significant variables}
+We now consider only variables that have a statistically significant impact i.e $$\eta = Intercept~+~Gender~+~No~of~kids~+~Prestige~Score~+~Mentor~Publications~+~Gender \cdot Prestige~Score$$ 
+(Prestige score is kept following from the hierarchy principle because it has a significant interaction with gender.)
+\begin{figure}[H]
+\centering
+<<model3,echo = FALSE,cache = TRUE, autodep = TRUE, tidy = TRUE,  message = FALSE >>=
+pub.glm_reduced <- glm(Articles ~ Gender +  No_of_kids + Mentor_publications + Gender*Prestige_Score,
+                      data = pub_data,
+                      family = poisson)
+
+summary(pub.glm_reduced)$coefficients %>%
+  kable(digits = 3 ,
+        align = "rrrrr",
+        booktabs = T,
+        format.args = list(big.mark = ",",scientific = FALSE),
+        col.names = c("Estimate","Std Error","z value","p value")
+        )%>%
+        row_spec(0,bold=TRUE)
+@
+\caption{\textbf{Coefficient results - Reduced model}}
+\label{table:ANOVA_model3}
+\end{figure}
+
+The remaining variables are now all statistically significant (prestige score not as a main effect but as an interaction). To test whether the reduction has a significant impact on the model deviance, we perform the LRT test - 
+
+$$ \wedge(y) = D^{(R)}(y) - D^{(P)}(y) \sim \chi^2(p-r)  $$
+where $p$ and $r$ denote the number of coefficients in the full and the reduced model and $D^{(R)}(y)$ and $D^{(P)}(y)$ denote the corresponding scaled deviances for the two models.For or comparsion, the values are - 
+\begin{figure}[H]
+\centering
+  <<LRT1,echo = FALSE, fig.height = 4.5, cache = TRUE, autodep = TRUE, tidy = TRUE, message = FALSE, warning=FALSE>>=
+dev_test1 <- data.frame( c(length(coefficients(pub.glm_interactions)),
+                               length(coefficients(pub.glm_reduced))),
+                        c(deviance(pub.glm_interactions),
+                                            deviance(pub.glm_reduced)))
+row.names(dev_test1) <- c("Model 1", "Model 2")
+dev_test1 %>%
+  kable(digits = 2 ,
+        align = "rrr",
+        booktabs = T,
+        format.args = list(big.mark = ",",scientific = FALSE),
+        col.names = c("No of coef's","Scaled Deviance")
+        )%>%
+        row_spec(0,bold=TRUE)
+
+@
+\squeezeup
+\squeezeup
+\label{fig:deviance table}
+\end{figure}
+
+$$ \wedge(y) = 1634.05 - 1628.08 \approx 6 ,~  p~value~under~\chi^2(4) = 0.1969  $$
+
+i.e p value is large and $H_0$ cannot be rejected and so we can accept the reduced model.
+
+
+
 \end{document}
+
+
 
 
