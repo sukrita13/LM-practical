@@ -97,9 +97,9 @@ n <- nrow(x_data)
 h <- 8/(n - 2*p)
 
 g1 <- ggplot(x_glm,aes(x = predict(x_glm,type="response"), y = rstandard(x_glm))) +
-  geom_point(size = 0.75)+
+  geom_point(size = 0.4)+
   labs(title = "Residuals vs Fitted", y = "Standardized deviance residuals", x = "Fitted values")+
-  geom_hline(yintercept=0,linetype="dashed")+
+  geom_hline(yintercept=0,color="red",linetype="dashed")+
   theme(plot.title = element_text(hjust = 0.5,size=9.5),
         axis.title.x = element_text(size = 7.5),
         axis.title.y = element_text(size = 7.5))+
@@ -111,7 +111,7 @@ g1 <- ggplot(x_glm,aes(x = predict(x_glm,type="response"), y = rstandard(x_glm))
             show.legend = FALSE)
 
 g2 <- ggplot(x_glm, aes(x = predict(x_glm,type="response"), y = influence(x_glm)$hat/(p/n))) +
-  geom_point(size = 0.75)+
+  geom_point(size = 0.4)+
   geom_hline(yintercept=2,color="red",linetype="dashed")+
   labs(title = "Leverage vs Fitted values", y = "Leverage / (p/n)", x = "Fitted values")+
   theme(plot.title = element_text(hjust = 0.5,size=9.5),
@@ -125,7 +125,7 @@ g2 <- ggplot(x_glm, aes(x = predict(x_glm,type="response"), y = influence(x_glm)
             show.legend = FALSE)
 
 g3 <- ggplot(x_glm, aes(x = predict(x_glm,type="response"), y = cooks.distance(x_glm))) +
-  geom_point(size = 0.75)+
+  geom_point(size = 0.4)+
   labs(title = "Cook's distance", y = "Cook's distance", x = "Fitted values")+
   geom_hline(yintercept=h,color="red",linetype="dashed")+
   geom_text( data = . %>% 
@@ -139,7 +139,7 @@ g3 <- ggplot(x_glm, aes(x = predict(x_glm,type="response"), y = cooks.distance(x
         axis.title.y = element_text(size = 7.5))
 
 
-grid.arrange( g1,arrangeGrob(g2, g3, ncol=2),nrow=2,top = "Model diagnostic plots")
+grid.arrange( g1,arrangeGrob(g2, g3, ncol=2),nrow=2)
 
 }
 @
@@ -215,9 +215,25 @@ title(xlab="Number of articles", ylab="Frequency",
 \caption{\textbf{Distribution of number of articles published}}
 \label{fig:graph1}
 \end{figure}
-There is, however, a significantly higher frequency for zeros in that data than a Poisson model with the same mean would suggest. This could be a feature of how data across category levels is distributed but should be investigated in the final model.\\
+There is, however, a significantly higher frequency for zeros in that data than a Poisson model with the same mean would suggest. Additionally, since for a Possion distribution, Mean = Variance = $\lambda$, we would expect the variance of the number of articles distribution to be broadly equivalent to the mean. But we observe that - 
+
+\begin{figure}[H]
+\centering
+<<ODP_summary,echo = FALSE,cache = TRUE, autodep = TRUE, tidy = TRUE,fig.width = 6, fig.height = 4,message = FALSE>>=
+x <- c(Mean = mean(pub_data[,1]) ,
+          Variance = var(pub_data[,1]),
+          Ratio = var(pub_data[,1])/mean(pub_data[,1]) ) 
+t(x) %>% kable( booktabs = T,
+                 digits = 3)%>%
+          row_spec(0,bold=TRUE)
+@          
+\caption{\textbf{Key statistics for distribution of number of articles}}
+\label{fig:ODPsummary}
+\end{figure}
+
+The variance is $\sim$ 2 times the mean. These could be features of how data across category levels is distributed but should be investigated in the final model. 
 \\
-Looking at correlations between these factors (see plot 1 below), it is clear that the number of publications by the student and the mentor are significantly correlated (correlation coefficient = 0.31) with only weak to moderate correlation between number of student's publications against other explanatory variables. 
+\\Looking at correlations between these factors (see plot 1 below), it is clear that the number of publications by the student and the mentor are significantly correlated (correlation coefficient = 0.31) with only weak to moderate correlation between number of student's publications against other explanatory variables. 
 
 \begin{figure}[H]
 \centering
@@ -283,14 +299,14 @@ Hence overall, there seems to be a difference in number of articles published du
 
 \newpage
 \section{Model fitting and testing}
-\subsection{Considering all main effects}
+\subsection{Model selection}
 We start with the Poisson model with $\eta$ given by - $$\eta = Intercept~+~Gender~+~Marital~Status~+~No~of~kids~+~Prestige~Score~+ ~Mentor~Publications $$
 i.e we consider the main effects of all available variables but no interactions. Gender and marital status are categorical variables and the remaining are continuous variables. The baseline level is an unmarried male. 
 \\
 \\The coefficients and their corresponding standard errors are obtained as -
 \begin{figure}[H]
 \centering
-<<model1,echo = FALSE,cache = TRUE, autodep = TRUE, tidy = TRUE,  message = FALSE >>=
+<<model1,echo = FALSE,cache = TRUE, autodep = TRUE, tidy = TRUE,  message = FALSE, warning =FALSE>>=
 pub.glm <- glm(Articles ~ .,data = pub_data, family = poisson)
 
 summary(pub.glm)$coefficients %>%
@@ -306,10 +322,7 @@ summary(pub.glm)$coefficients %>%
 \label{table:ANOVA_model1}
 \end{figure}
 
-At a 5\% significance level, all factors seem to have a statistically significant impact (p values are small) with the exception of prestige score. Before we eliminate the variable as a predictor however, we consider the interactions with other variables to check if we are missing any key dependencies.
-
-\subsection{Considering all main effects and interactions with gender}
-We consider all main effects, as before, and additionally how different variables interact with gender. The results for coefficients are as below - 
+At a 5\% significance level, all factors seem to have a statistically significant impact (p values are small) with the exception of prestige score. Before we eliminate the variable as a predictor however, we consider the interactions with other variables to check if we are missing any key dependencies.We consider all main effects, as before, and additionally how different variables interact with gender. The results for coefficients are as below - 
 \begin{figure}[H]
 \centering
 <<model2,echo = FALSE,cache = TRUE, autodep = TRUE, tidy = TRUE,  message = FALSE >>=
@@ -337,14 +350,13 @@ Note that the impacts observed are largely consistent with the conclusions based
 \item Coefficient for female gender is negative which implies lower mean number of articles for a female compared to the baseline (male).
 \item The negative coefficient associated with number of kids suggests publishing activity reduces for students who have kids, as we have seen. 
 \item Marital status does not have a statistically significant impact. 
-\item Prestige score while alone does not have a statistically significant impact does interact with gender to produce a significant impact. The coefficient is positive implying that the difference in male female productivity reduces when the students are enrolled in a high prestige programme. This could be driving the improvement in publication distribution observed in fig~\ref{fig:graph3} for higher prestige bands. This is plausible, for example, if a low prestige score may be associated with higher discriminatory behaviour, affecting productivity of females as compared to males.
+\item Prestige score while alone does not have a statistically significant impact does interact with gender to produce a significant impact. The coefficient is positive implying that the difference in male female productivity reduces when the students are enrolled in a high prestige programme. 
+\\
+\\This could be driving the improvement in publication distribution observed in fig~\ref{fig:graph3} for higher prestige bands. This is plausible, for example, if a low prestige score may be associated with higher discriminatory behaviour, affecting productivity of females as compared to males.
 \item No other pair of variables have a statistically significant interaction.
 \end{itemize}
 
-Based on the results from the model above, we remove the factors that are not statistically significant to obtain a reduced model.
-
-\subsection{Considering statistically significant variables}
-We now consider only variables that have a statistically significant impact i.e $$\eta = Intercept~+~Gender~+~No~of~kids~+~Prestige~Score~+~Mentor~Publications~+~Gender \cdot Prestige~Score$$ 
+Based on the results from the model above, we remove the factors that are not statistically significant to obtain a reduced model i.e $$\eta = Intercept~+~Gender~+~No~of~kids~+~Prestige~Score~+~Mentor~Publications~+~Gender \cdot Prestige~Score$$ 
 (Prestige score is kept following from the hierarchy principle because it has a significant interaction with gender.)
 \begin{figure}[H]
 \centering
@@ -369,10 +381,10 @@ summary(pub.glm_reduced)$coefficients %>%
 The remaining variables are now all statistically significant (prestige score not as a main effect but as an interaction). To test whether the reduction has a significant impact on the model deviance, we perform the LRT test - 
 
 $$ \wedge(y) = D^{(R)}(y) - D^{(P)}(y) \sim \chi^2(p-r)  $$
-where $p$ and $r$ denote the number of coefficients in the full and the reduced model and $D^{(R)}(y)$ and $D^{(P)}(y)$ denote the corresponding scaled deviances for the two models.For or comparsion, the values are - 
+where $p$ and $r$ denote the number of coefficients in the full and the reduced model and $D^{(R)}(y)$ and $D^{(P)}(y)$ denote the corresponding scaled deviances for the two models.For the comparison of the reduced model to the model with interactions, the values are - 
 \begin{figure}[H]
 \centering
-  <<LRT1,echo = FALSE, fig.height = 4.5, cache = TRUE, autodep = TRUE, tidy = TRUE, message = FALSE, warning=FALSE>>=
+<<LRT1,echo = FALSE, cache = TRUE, autodep = TRUE, tidy = TRUE, message = FALSE, warning=FALSE>>=
 dev_test1 <- data.frame( c(length(coefficients(pub.glm_interactions)),
                                length(coefficients(pub.glm_reduced))),
                         c(deviance(pub.glm_interactions),
@@ -388,16 +400,224 @@ dev_test1 %>%
         row_spec(0,bold=TRUE)
 
 @
-\squeezeup
-\squeezeup
+\caption{\textbf{Deviance results}}
 \label{fig:deviance table}
 \end{figure}
-
-$$ \wedge(y) = 1634.05 - 1628.08 \approx 6 ,~  p~value~under~\chi^2(4) = 0.1969  $$
+\squeezeup
+\squeezeup
+$$ \wedge(y) = 1634.05 - 1628.08 \approx 6 ,\Rightarrow  p~value~under~\chi^2(4) = 0.1969  $$
 
 i.e p value is large and $H_0$ cannot be rejected and so we can accept the reduced model.
 
+\newpage
+\subsection{Model diagnostics}
+Looking at key statistics of model fit for the models considered -
 
+\begin{figure}[H]
+\centering
+<<Diagnostics1,echo = FALSE, cache = TRUE, autodep = TRUE, tidy = TRUE, message = FALSE, warning=FALSE>>=
+diagnostics_table <- data.frame(
+                                c(pub.glm$aic,pub.glm_interactions$aic,pub.glm_reduced$aic),
+                                c(pub.glm$deviance,pub.glm_interactions$deviance,pub.glm_reduced$deviance),
+                                c(rsq.kl(pub.glm),rsq.kl(pub.glm_interactions),rsq.kl(pub.glm_reduced))
+                                )
+row.names(diagnostics_table) <- c("All main effects","All main effects + interactions with gender","Reduced model")
+diagnostics_table %>%
+  kable(digits = c(2,2,4) ,
+        align = "rrr",
+        booktabs = T,
+        format.args = list(big.mark = ",",scientific = FALSE),
+        col.names = c("AIC","Deviance","R^2")
+        )%>%
+        row_spec(0,bold=TRUE)
+@
+\caption{\textbf{Model diagnostics}}
+\label{fig:diagnostics table}
+\end{figure}
+\squeezeup
+We can observe that the scaled deviance for the reduced model does not vary greatly between the models considered and compares to a null deviance of $1817.4$. Also, $R^2$ is fairly similar and the AIC is minimum for the reduced model so our model choice seems reasonable. It should be noted however that the metrics suggest that the model is not capturing the variability in the data quite well (scaled deviance is not a significant improvement relative to null deviance and $R^2$ is small). Looking further at residual diagnostics -
+
+\begin{figure}[H]
+\centering
+\squeezeup
+<<graph4,echo = FALSE,cache = TRUE,dep = TRUE, fig.height= 6.55 , tidy = TRUE, message = FALSE>>=
+diagnostic_plots(pub.glm_reduced,pub_data)
+@
+\squeezeup
+\squeezeup
+\caption{\textbf{Diagnostic plots}}
+\label{fig:diagnostics plots}
+\end{figure}
+
+The standardized deviance residuals vs fitted values graph does not quite conform to a standard normal, with quite a few residuals outside the (-2,2) range but this not surprising for a Poisson model with small counts. For leverage and infleunce, a good range of points remain within reasonably expected limts though there are some outliers. While a high cook's distance is not a problem in itself, it does merit a closer look into the points to ensure that data points that have a significant impact on model fit are not completely absurd/ impossible. Looking at these further - 
+
+\begin{figure}[H]
+\centering
+<<outliers_table,echo = FALSE,cache = TRUE,dep = TRUE, tidy = TRUE, message = FALSE>>=
+pub_data[c(328,911,912,913,914,915),] %>%
+  kable(
+        align = "rrrrrr",
+        booktabs = T
+        )%>%
+        row_spec(0,bold=TRUE)
+
+@
+\caption{\textbf{High influence data points}}
+\label{fig:outliers}
+\end{figure}
+
+It is easy to see that since the model is based on a positive relationship between mentor publications and student publications, any individuals that deviate from the 'norm' are impacting the model fit. For instance, data point 328 has a student producing 1 article under a mentor with 77 publications and data point 911 has a student (with 2 kids) publishing 11 articles under a mentor who published 7.
+\\
+\\Removing them would reduce model's null deviance and improve diagnostics but there is no reason to believe that these instances are impossible/erroneous - there could be differences in personal circumstances or motivation that could drive this variability and so we choose to keep all data points in the sample. 
+
+\subsection{Interpretation of results}
+Based on the results above, we choose the model with $\beta$ coefficient estimates given by - 
+
+\begin{figure}[H]
+\centering
+<<coefficients_table,echo = FALSE,cache = TRUE,dep = TRUE, tidy = TRUE, message = FALSE>>=
+beta_coef <- as.data.frame(summary(pub.glm_reduced)$coef[,1])
+beta_coef[,2] <- as.data.frame(summary(pub.glm_reduced)$coef[,2])
+colnames(beta_coef) <- c("beta","se")
+
+ci95 <- data.frame(beta = beta_coef$beta,
+                   se = beta_coef$se,
+                   Lower = beta_coef$beta - qnorm(0.975)*beta_coef$se,
+                   Upper = beta_coef$beta + qnorm(0.975)*beta_coef$se)
+row.names(ci95) <- row.names(beta_coef)
+
+ci95 %>%
+  kable(digits = 3 ,
+        align = "rrrr",
+        booktabs = T,
+        format.args = list(big.mark = ",",scientific = FALSE)
+        )%>%
+        row_spec(0,bold=TRUE)
+
+@
+\squeezeup
+\caption{\textbf{$\beta$ estimates and confidence intervals}}
+\label{table:coefficients_table}
+\end{figure}
+
+i.e $\mu_i$ is given by -
+$$ exp( \beta_0 + \beta_{1} \cdot I(Sex_{Female}) + \beta_{2} \cdot x_{Kids} 
++ \beta_{3} \cdot x_{Prestige} + \beta_{4} \cdot x_{Mentor~publications}
++ \beta_{5} \cdot I(Sex_{Female}) \cdot x_{Prestige} )$$
+where $I(Sex_{Female})$ denotes indicator function for the data point being female, $x's$ are the values it takes for the particular variables denotes and $\beta's$ are corresponding fitted coefficients. 
+\\
+\\Therefore, $\mu_i$ depends on $e^{\beta}$. The confidence intervals and coefficient estimates restated in terms of $e^{\beta}$ are given as below - 
+
+\begin{figure}[H]
+\centering
+<<coef_exp_table,echo = FALSE,cache = TRUE,dep = TRUE, tidy = TRUE, message = FALSE>>=
+
+exp_ci95 <- data.frame(exp_beta = exp(beta_coef$beta),
+            exp_Lower = exp(beta_coef$beta - qnorm(0.975)*beta_coef$se),
+            exp_Upper = exp(beta_coef$beta + qnorm(0.975)*beta_coef$se) ) 
+
+row.names(exp_ci95) <- row.names(beta_coef)
+
+exp_ci95%>%
+  kable(digits = 3 ,
+        align = "rrrr",
+        booktabs = T,
+        format.args = list(big.mark = ",",scientific = FALSE))%>%
+        row_spec(0,bold=TRUE)
+
+
+@
+\squeezeup
+\caption{\textbf{$e^{\beta}$ estimates and confidence intervals}}
+\label{table:coefficients_table2}
+\end{figure}
+
+\begin{itemize}
+\item The intercept is given by 1.801. This implies for a baseline case (male) and all $x$ values = 0, the mean number of articles produced is 1.801 with 95\% confidence interval [1.447,2.241].
+\item For each kid that a student has, the mean number of articles produced relative decreases by a multiplicative factor of 0.862. For example compared to a baseline case, a student with 2 kids will have a mean number of articles produced given by $ 1.801 \cdot 0.862^2 = 1.338 $.
+\item Similarly, an unit increase in the number of publications by mentor increases the mean number of articles published by the student by a multiplicative factor of 1.026.
+\item Since there is an interaction between gender and prestige score, they cannot be considered in isolation. For instance, for gender, the difference in mean number of publications as we go from male to female will be given by - 
+
+$$ \frac{\mu_{female}}{\mu_{male}} =  \frac{exp(\eta_{female})}{exp(\eta_{male})} = exp(\beta_{1} + \beta_{5} \cdot x_{Prestige}) = exp(\beta_{1}) \cdot  exp(\beta_{5})^{x_{Prestige}} $$
+This implies, the effect of gender varies depending on the value of the prestige score the programme. For a male and female student both enrolled at a graduate programme of score 1, the mean number of articles produced by the female is lower than that produced by the male student by a multiplicative factor of $ 0.506 \cdot 0.955^1 = 0.483 $. For a graduate programme of score 4, the multiplicative difference reduces to $ 0.506 \cdot 0.955^4 = 0.421 $. That is the difference between mean number of articles produced by males and females reduces as prestige score increases.
+\item Similarly, it's not meaningful to consider the confidence interval for the impact of gender individually as it will depend on the value of the prestige score. The variance of $\beta_{1} + \beta_{5} \cdot x_{Prestige}$ is given by $Var(\hat{\beta_1})+2x_{prestige} Cov(\hat{\beta_1},\hat{\beta_5})+ x_{prestige}^2 \cdot Var(\hat{\beta_5})$. So for a given prestige score, substituting standard errors from figure~\ref{table:coefficients_table} provides the required variance to calculate the confidence interval for the gender coefficient.
+
+\item The $\beta$ coefficient of prestige score will similarly depend on the gender. The change in mean number of articles for a unit change in prestige score will be given by a multiplicative factor of -  
+
+$$ \frac{\mu_{x_{prestige}+1}}{\mu_{x_{prestige}}} =  \frac{exp(\eta_{x_{prestige}+1})}{exp(\eta_{x_{prestige}})} = exp(\beta_{3} + \beta_{5} \cdot I(Sex_{Female})) = exp(\beta_{3}) \cdot  exp(\beta_{5})^{I(Sex_{Female})} $$
+
+i.e for a female, the coefficient will be given by $0.955 \cdot 1.147^1 = 1.095$ and for a male it will be = 0.955. Note that in the case of a female, CI will be calculated as given by formula above while in the case of a female it will the same as the CI for the prestige score itself i.e [0.895,1.019] which includes 1 and shows that the impact is not statistically significant for a male. 
+
+
+
+\end{itemize}
+
+
+\newpage
+\section{Limitations}
+\subsection{Overdispersion}
+As overdispersion can generally be an issue with Poisson models and picking up from the possibility of the same identified in the exploratory analysis (figure~\ref{fig:ODPsummary}), we check if there is any evidence of overdispersion by estimating $\phi$ as $ \hat{\phi} = \frac{1}{n-p} \sum_{i=1}^{n} \frac{(y_i - \hat{\mu_i})^2}{V(\hat{\mu_i})} $
+\\
+\\For the model chosen, we get an estimate of $\phi$ as 1.81 i.e the model we have assumed currently will tend to underestimate variances of the coefficient estimates and hence give p-values that are too optimistic. A restatement of model results the with the overdispersion correction with $\phi = 1.81$ gives - 
+
+\begin{figure}[H]
+\centering
+<<model4,echo = FALSE,cache = TRUE, autodep = TRUE, tidy = TRUE,  message = FALSE >>=
+pub.glm_dispersed <- glm(Articles ~ Gender +  No_of_kids + Mentor_publications + Gender*Prestige_Score,
+                      data = pub_data,
+                      family = quasipoisson)
+
+summary(pub.glm_reduced)$coefficients %>%
+  kable(digits = 3 ,
+        align = "rrrrr",
+        booktabs = T,
+        format.args = list(big.mark = ",",scientific = FALSE),
+        col.names = c("Estimate","Std Error","z value","p value")
+        )%>%
+        row_spec(0,bold=TRUE)
+@
+\caption{\textbf{Coefficient results - Overdispersion correction}}
+\label{table:ANOVA_model3}
+\end{figure}
+\squeezeup
+Hence,we note that accounting for the dispersion coefficient corrects for the optimism in the p values. Under this model, the interaction between gender and prestige score becomes much less significant (p value is 0.055 and borderline no longer significant at a 5\% confidence interval.)
+
+\subsection{Zero count}
+We noted in figure~\ref{fig:graph1} that zero count was larger than under a Poisson model of the same mean. We check if the model is able to account for it by comparing the predicted number of publications under the model against the observed number in the dataset for small counts - 
+
+\begin{figure}[H]
+\centering
+\squeezeup
+<<zero_count,echo = FALSE,cache = TRUE, fig.height = 2.5, fig.width = 2.5, autodep = TRUE, tidy = TRUE,  message = FALSE >>=
+table(pub_data$Articles) %>% 
+  as.data.frame %>% 
+  filter( Freq > 5) %>% 
+  mutate(as.data.frame(colSums(predprob(pub.glm_reduced)[,1:8])))%>%
+  ggplot(aes(x = colSums(predprob(pub.glm_reduced)[, 1:8]), y = Freq,label = Var1))+
+  geom_point(size = 0.75)+
+  geom_text(hjust = 1.5,size = 2.5)+
+  labs( y = "Observed", x = "Predicted")+
+    theme(axis.title.x = element_text(size = 7.5),
+          axis.title.y = element_text(size = 7.5))
+@
+\squeezeup
+\squeezeup
+\caption{\textbf{Counts for small numbers - Observed vs predicted}}
+\label{table:zero_counts}
+\end{figure}
+\squeezeup
+Clearly, the observed number of zero publications in the model is much greater than predicted though for other counts, the predicted value lands fairly close. It appears that there is some threshold behaviour for students to start publishing but once they do, the distribution of articles published can be approximated by a Poisson model as above. The Poisson model therefore is not accounting for this threshold and underestimating the chances of individuals of not producing any work at all. This could be solved through the use of mixed models such as zero count inflation or hurdle model.
+
+\newpage
+\section{Conclusions}
+We have established that number of articles published by the student depend on the number of articles published by the mentor, gender, number of kids and interaction of prestige score of the graduate programme through a Poisson model with a canonical link i.e $$Mean~Student~publications = e^{(Gender~+~No~of~kids~+~Prestige~Score~+~Mentor~publications~+~Gender\cdot Prestige~Score)}$$
+Higher number of mentor publications positively impact publication activity by the student while additional number of kids brings it down. Males are more productive than females however the difference decreases as the prestige score of the programme increases.
+\\
+\\We have identified that there are, however, limitations. For instance, the model does not account for overdispersion which underestimates the variability of estimated coefficients. The model does not appropriately capture the number of students publishing no articles, missing some kind of threshold barrier that needs to be met before a student starts publishing any material. We have seen that the issues can be addressed by accounting for dispersion through estimating $\phi$ and using an appropriate mixture model respectively. 
+\\
+\\While the model does not completely account for the variability in the dataset, it should be noted that we have made an implicit assumption  that the available variables are the only variables significantly impacting performance. There could be other explanatory variables such as number of dependents, access to child care facilities, available funding etc. that could be affecting behaviour. In practice, it is hard to account for all possible factors and as long as we are able to produce a model that provides predictions within a reasonable range, it would help provide meaningful results.
+\\
+\\Additionally, any model is as good as the data it is based on, so if there are any issues with the data such as incorrect/missing data points, the model will reflect those.
 
 \end{document}
 
